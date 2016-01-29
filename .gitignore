@@ -1,0 +1,11 @@
+
+# ignore blade file
+*build64_*
+*blade-bin
+.SConstruct.lock
+.sconsign.dblite
+reference
+
+*log*
+
+
