@@ -207,6 +207,12 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+#include <string>
+#include <sstream>
+#include <iostream>
+#include <cstdarg>
+
+
   /* default snap length (maximum bytes per packet to capture) */
 #define SNAP_LEN 1518
 
@@ -313,12 +319,42 @@ print_app_usage(void)
   return;
 }
 
+
+/**
+ * capturef, used for "printf" like API in CHECKF, LOGF, LOGF_IF
+ * See also for the attribute formatting ref:  http://www.codemaestro.com/reviews/18
+ */
+void capturef(std::ostringstream& os, const char *printf_like_message, ...) {
+  static const int kMaxMessageSize = 2048;
+  static const std::string kTruncatedWarningText = "[...truncated...]";
+  char finished_message[kMaxMessageSize];
+  va_list arglist;
+  va_start(arglist, printf_like_message);
+
+#if (defined(WIN32) || defined(_WIN32) || defined(__WIN32__) && !defined(__GNUC__))
+  const int nbrcharacters = vsnprintf_s(finished_message, _countof(finished_message), _TRUNCATE, printf_like_message, arglist);
+#else
+  const int nbrcharacters = vsnprintf(finished_message, sizeof (finished_message), printf_like_message, arglist);
+#endif
+  va_end(arglist);
+
+  if (nbrcharacters <= 0) {
+    os << "\n\tERROR LOG MSG NOTIFICATION: Failure to parse successfully the message";
+    os << '"' << printf_like_message << '"' << std::endl;
+  } else if (nbrcharacters > kMaxMessageSize) {
+    os << finished_message << kTruncatedWarningText;
+  } else {
+    os << finished_message;
+  }
+}
+
+
 /*
  * print data in rows of 16 bytes: offset   hex   ascii
  *
  * 00000   47 45 54 20 2f 20 48 54  54 50 2f 31 2e 31 0d 0a   GET / HTTP/1.1..
  */
-void
+  void
 print_hex_ascii_line(const u_char *payload, int len, int offset)
 {
 
@@ -326,50 +362,52 @@ print_hex_ascii_line(const u_char *payload, int len, int offset)
   int gap;
   const u_char *ch;
 
+  std::ostringstream os;
+
   /* offset */
-  printf("%05d   ", offset);
+  capturef(os, "%05d   ", offset);
 
   /* hex */
   ch = payload;
   for(i = 0; i < len; i++) {
-    printf("%02x ", *ch);
+    capturef(os, "%02x ", *ch);
     ch++;
     /* print extra space after 8th byte for visual aid */
     if (i == 7)
-      printf(" ");
+      os << " ";
   }
   /* print space to handle line less than 8 bytes */
   if (len < 8)
-    printf(" ");
+    os << " ";
 
   /* fill hex gap with spaces if not full line */
   if (len < 16) {
     gap = 16 - len;
     for (i = 0; i < gap; i++) {
-      printf("   ");
+      os << "   ";
     }
   }
-  printf("   ");
+  os << "   ";
 
   /* ascii (if printable) */
   ch = payload;
   for(i = 0; i < len; i++) {
     if (isprint(*ch))
-      printf("%c", *ch);
+      capturef(os, "%c", *ch);
     else
-      printf(".");
+      os << ".";
     ch++;
   }
 
-  printf("\n");
+  //  os << "\n";
 
-  return;
+  std::cout <<  os.str() << std::endl;
 }
 
 /*
  * print packet payload data (avoid printing binary data)
  */
-void
+  void
 print_payload(const u_char *payload, int len)
 {
 
@@ -410,6 +448,7 @@ print_payload(const u_char *payload, int len)
 
   return;
 }
+
 
 /*
  * dissect/print packet
@@ -507,7 +546,8 @@ int main(int argc, char **argv)
   char errbuf[PCAP_ERRBUF_SIZE];/* error buffer */
   pcap_t *handle;/* packet capture handle */
 
-  char filter_exp[] = "ip";/* filter expression [3] */
+  // char filter_exp[] = "ip";/* filter expression [3] */
+  char filter_exp[] = "tcp and (src net 180.169.101.189) and (src port 7101)";/* filter expression [3] */
   struct bpf_program fp;/* compiled filter program (expression) */
   bpf_u_int32 mask;/* subnet mask */
   bpf_u_int32 net;/* ip */
